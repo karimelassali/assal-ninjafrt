@@ -1,0 +1,21 @@
+{
+  "name": "Naruto Shadow Clone Jutsu",
+  "short_name": "Shadow Clone",
+  "description": "Perform the Kage Bunshin No Jutsu with AI!",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#ff6600",
+  "icons": [
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
