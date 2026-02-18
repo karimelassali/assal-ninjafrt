@@ -53,8 +53,8 @@ const FRUIT_COLORS: Record<string, string> = {
     "🍉": "#ff3333", "🍊": "#ffaa00", "🍎": "#ff0000", "🍋": "#ffff00",
     "🍇": "#cc00ff", "🥝": "#55ff00", "🍌": "#ffee00"
 };
-const GRAVITY = 0.15; // User liked 0.10, but 0.15 feels slightly snappier
-const SPAWN_RATE = 50; // Faster spawns
+const GRAVITY = 0.08; // Reduced gravity for slower fall
+const SPAWN_RATE = 120; // Slower spawn rate
 
 export default function GameCanvas({ webcamRef, finger }: Props) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -248,8 +248,8 @@ export default function GameCanvas({ webcamRef, finger }: Props) {
         const isBomb = Math.random() < 0.1;
         const type = FRUIT_TYPES[Math.floor(Math.random() * FRUIT_TYPES.length)];
         const x = Math.random() * (w - 100) + 50;
-        const vx = (w / 2 - x) * 0.008 + (Math.random() - 0.5) * 5;
-        const vy = -(Math.random() * 6 + 14); // Higher launch
+        const vx = (w / 2 - x) * 0.005 + (Math.random() - 0.5) * 3; // Reduced horizontal speed
+        const vy = -(Math.random() * 4 + 10); // Reduced launch speed, fruits won't go too high
 
         fruitsRef.current.push({
             id: Math.random(),
@@ -257,7 +257,7 @@ export default function GameCanvas({ webcamRef, finger }: Props) {
             vx, vy,
             type: isBomb ? "💣" : type,
             rotation: 0,
-            vr: (Math.random() - 0.5) * 0.3,
+            vr: (Math.random() - 0.5) * 0.2, // Slower rotation
             scale: 1,
             sliced: false,
             bomb: isBomb
@@ -286,69 +286,24 @@ export default function GameCanvas({ webcamRef, finger }: Props) {
     };
 
     const drawSword = (ctx: CanvasRenderingContext2D, x: number, y: number, angle: number) => {
+        // Optimization: No fancy sword, just a high-performance glowing pointer
         ctx.save();
         ctx.translate(x, y);
-        ctx.rotate(angle); // Rotate to align with movement
 
-        const img = swordImgRef.current;
-        if (img && img.complete) {
-            // Draw Image
-            const scale = 1.2; // Adjust scale as needed
-            const w = img.width * scale;
-            const h = img.height * scale;
-            // Draw centered, maybe offset slightly so 'tip' is at (0,0)?
-            // Assuming balgha is horizontal, let's center it for now.
-            ctx.drawImage(img, -w / 2, -h / 2, w, h);
-        } else {
-            // Fallback to "Big Knight" sword if image not loaded
-            const scale = 1.5;
-            ctx.scale(scale, scale);
-            ctx.rotate(Math.PI / 2); // Original rotation tweak for the drawn sword
+        // Simple glowing orb (much faster than image)
+        const radius = isMobileRef.current ? 8 : 12;
 
-            // Shadow
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = "rgba(0,0,0,0.5)";
+        ctx.beginPath();
+        ctx.arc(0, 0, radius, 0, Math.PI * 2);
 
-            // Blade (Metallic)
-            ctx.beginPath();
-            ctx.moveTo(0, -10);
-            ctx.lineTo(80, 0); // Tip
-            ctx.lineTo(0, 10);
-            ctx.lineTo(-20, 10);
-            ctx.lineTo(-20, -10);
-            ctx.closePath();
-            const grad = ctx.createLinearGradient(0, -10, 0, 10);
-            grad.addColorStop(0, "#ccc");
-            grad.addColorStop(0.5, "#fff");
-            grad.addColorStop(1, "#999");
-            ctx.fillStyle = grad;
-            ctx.fill();
-            ctx.strokeStyle = "#666";
-            ctx.lineWidth = 1;
-            ctx.stroke();
+        // Fast glow using radial gradient instead of shadowBlur (better for mobile)
+        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, radius * 2);
+        gradient.addColorStop(0, "rgba(255, 255, 255, 1)");
+        gradient.addColorStop(0.4, "rgba(0, 255, 255, 0.6)");
+        gradient.addColorStop(1, "rgba(0, 255, 255, 0)");
 
-            // Fuller (Blood groove)
-            ctx.beginPath();
-            ctx.moveTo(-15, 0);
-            ctx.lineTo(50, 0);
-            ctx.lineWidth = 2;
-            ctx.strokeStyle = "#888";
-            ctx.stroke();
-
-            // Crossguard
-            ctx.fillStyle = "#DAA520"; // Golden
-            ctx.fillRect(-24, -25, 10, 50);
-
-            // Hilt (Handle)
-            ctx.fillStyle = "#8B4513"; // Brown leather
-            ctx.fillRect(-60, -5, 40, 10);
-
-            // Pommel
-            ctx.beginPath();
-            ctx.arc(-65, 0, 8, 0, Math.PI * 2);
-            ctx.fillStyle = "#DAA520";
-            ctx.fill();
-        }
+        ctx.fillStyle = gradient;
+        ctx.fill();
 
         ctx.restore();
     };
