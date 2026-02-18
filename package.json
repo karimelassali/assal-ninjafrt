@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@mediapipe/camera_utils": "^0.3.1675466862",
+    "@mediapipe/face_mesh": "^0.4.1633559619",
     "@mediapipe/hands": "^0.4.1675469240",
+    "@mediapipe/selfie_segmentation": "^0.1.1675465747",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",

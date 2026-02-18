@@ -13,6 +13,17 @@ interface Props {
     handStatus: HandStatus;
 }
 
+/* ---- Smoke particle ---- */
+interface Smoke {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    r: number;
+    life: number;
+    maxLife: number;
+}
+
 export default function CloneEffect({
     webcamRef,
     results,
@@ -23,7 +34,18 @@ export default function CloneEffect({
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [size, setSize] = useState({ w: 1280, h: 720 });
 
-    // Stable refs
+    /* ---- Segmentation ---- */
+    const segRef = useRef<any>(null);
+    const maskRef = useRef<any>(null);
+    const segBusyRef = useRef(false);
+
+    /* ---- Offscreen canvases ---- */
+    const personCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+    /* ---- Smoke particles ---- */
+    const smokesRef = useRef<Smoke[]>([]);
+
+    /* ---- Stable refs ---- */
     const flashRef = useRef(0);
     const prevCountRef = useRef(0);
     const jutsuRef = useRef(jutsuActive);
@@ -33,7 +55,11 @@ export default function CloneEffect({
 
     useEffect(() => { jutsuRef.current = jutsuActive; }, [jutsuActive]);
     useEffect(() => {
-        if (cloneCount > 0 && prevCountRef.current === 0) flashRef.current = 1;
+        if (cloneCount > 0 && prevCountRef.current === 0) {
+            flashRef.current = 1;
+            // Spawn burst of smoke
+            spawnSmokeBurst(640, 360, 80);
+        }
         prevCountRef.current = cloneCount;
         countRef.current = cloneCount;
     }, [cloneCount]);
@@ -43,6 +69,51 @@ export default function CloneEffect({
         if (!jutsuActive) { prevCountRef.current = 0; flashRef.current = 0; }
     }, [jutsuActive]);
 
+    /* ---- Spawn smoke burst ---- */
+    function spawnSmokeBurst(cx: number, cy: number, count: number) {
+        for (let i = 0; i < count; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 1 + Math.random() * 4;
+            const life = 0.6 + Math.random() * 0.8;
+            smokesRef.current.push({
+                x: cx + (Math.random() - 0.5) * 200,
+                y: cy + (Math.random() - 0.5) * 200,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed - 1,
+                r: 10 + Math.random() * 30,
+                life,
+                maxLife: life,
+            });
+        }
+    }
+
+    /* ---- Create offscreen canvas ---- */
+    useEffect(() => {
+        personCanvasRef.current = document.createElement("canvas");
+    }, []);
+
+    /* ---- Init selfie segmentation ---- */
+    useEffect(() => {
+        let alive = true;
+        (async () => {
+            const { SelfieSegmentation } = await import("@mediapipe/selfie_segmentation");
+            if (!alive) return;
+            const seg = new SelfieSegmentation({
+                locateFile: (file: string) =>
+                    `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`,
+            });
+            seg.setOptions({ modelSelection: 1 });
+            seg.onResults((r: any) => {
+                maskRef.current = r.segmentationMask;
+                segBusyRef.current = false;
+            });
+            segRef.current = seg;
+            console.log("✅ Selfie Segmentation loaded");
+        })();
+        return () => { alive = false; };
+    }, []);
+
+    /* ---- Resize ---- */
     useEffect(() => {
         const resize = () => setSize({ w: window.innerWidth, h: window.innerHeight });
         resize();
@@ -50,34 +121,23 @@ export default function CloneEffect({
         return () => window.removeEventListener("resize", resize);
     }, []);
 
-    /* ---- Helper: draw video with "cover" fit (fills dest, crops overflow) ---- */
+    /* ---- drawCover: video fills dest area maintaining aspect (like CSS cover) ---- */
     function drawCover(
         ctx: CanvasRenderingContext2D,
-        vid: HTMLVideoElement,
+        src: CanvasImageSource & { videoWidth?: number; videoHeight?: number; width?: number; height?: number },
         dx: number, dy: number, dw: number, dh: number
     ) {
-        const vw = vid.videoWidth;
-        const vh = vid.videoHeight;
+        const vw = src.videoWidth || (src as any).width || 0;
+        const vh = src.videoHeight || (src as any).height || 0;
         if (!vw || !vh) return;
-
-        const destAspect = dw / dh;
-        const vidAspect = vw / vh;
+        const da = dw / dh, va = vw / vh;
         let sx: number, sy: number, sw: number, sh: number;
-
-        if (destAspect > vidAspect) {
-            sw = vw;
-            sh = vw / destAspect;
-            sx = 0;
-            sy = (vh - sh) / 2;
-        } else {
-            sh = vh;
-            sw = vh * destAspect;
-            sx = (vw - sw) / 2;
-            sy = 0;
-        }
-        ctx.drawImage(vid, sx, sy, sw, sh, dx, dy, dw, dh);
+        if (da > va) { sw = vw; sh = vw / da; sx = 0; sy = (vh - sh) / 2; }
+        else { sh = vh; sw = vh * da; sx = (vw - sw) / 2; sy = 0; }
+        ctx.drawImage(src, sx, sy, sw, sh, dx, dy, dw, dh);
     }
 
+    /* ---- Render loop ---- */
     useEffect(() => {
         const canvas = canvasRef.current;
         const ctx = canvas?.getContext("2d");
@@ -91,7 +151,7 @@ export default function CloneEffect({
             const W = canvas.width;
             const H = canvas.height;
 
-            // Dark background
+            // Dark bg
             ctx.fillStyle = "#0a0a0a";
             ctx.fillRect(0, 0, W, H);
 
@@ -100,139 +160,131 @@ export default function CloneEffect({
             const status = statusRef.current;
             const res = resultsRef.current;
 
-            if (!active || count === 0) {
-                // ==========================================
-                // IDLE MODE: full-screen video with hand dots
-                // ==========================================
-                drawCover(ctx, vid, 0, 0, W, H);
+            // Send frames to segmentation when jutsu is active
+            if (active && segRef.current && !segBusyRef.current) {
+                segBusyRef.current = true;
+                segRef.current.send({ image: vid });
+            }
 
-                // Hand tracking dots
-                if (res?.multiHandLandmarks) {
-                    let color = "#ff3333";
-                    if (status === "near") color = "#ffdd00";
-                    if (status === "active") color = "#00ff66";
-                    if (status === "fist") color = "#3399ff";
+            // ============================
+            // 1. Draw full video (background + you = the scene)
+            // ============================
+            drawCover(ctx, vid, 0, 0, W, H);
 
-                    ctx.save();
-                    for (const hand of res.multiHandLandmarks) {
-                        // draw connections (skeleton)
-                        const connections = [
-                            [0, 1], [1, 2], [2, 3], [3, 4], // thumb
-                            [0, 5], [5, 6], [6, 7], [7, 8], // index
-                            [0, 9], [9, 10], [10, 11], [11, 12], // middle
-                            [0, 13], [13, 14], [14, 15], [15, 16], // ring
-                            [0, 17], [17, 18], [18, 19], [19, 20], // pinky
-                            [5, 9], [9, 13], [13, 17], // palm
-                        ];
-                        ctx.strokeStyle = color;
-                        ctx.lineWidth = 2;
-                        ctx.globalAlpha = 0.5;
-                        for (const [a, b] of connections) {
-                            ctx.beginPath();
-                            ctx.moveTo(hand[a].x * W, hand[a].y * H);
-                            ctx.lineTo(hand[b].x * W, hand[b].y * H);
-                            ctx.stroke();
-                        }
+            // ============================
+            // 2. Draw person-only clones (when jutsu active + mask ready)
+            // ============================
+            if (active && count > 0 && maskRef.current && personCanvasRef.current) {
+                const pc = personCanvasRef.current;
+                pc.width = W;
+                pc.height = H;
+                const pctx = pc.getContext("2d");
 
-                        // dots
-                        ctx.globalAlpha = 0.9;
-                        ctx.fillStyle = color;
-                        ctx.shadowBlur = 8;
-                        ctx.shadowColor = color;
-                        for (const pt of hand) {
-                            ctx.beginPath();
-                            ctx.arc(pt.x * W, pt.y * H, 4, 0, Math.PI * 2);
-                            ctx.fill();
-                        }
+                if (pctx) {
+                    // Step A: Draw the segmentation mask (person = opaque, bg = transparent)
+                    pctx.clearRect(0, 0, W, H);
+                    pctx.drawImage(maskRef.current, 0, 0, W, H);
+
+                    // Step B: source-in → next draw keeps only pixels where mask is opaque
+                    pctx.globalCompositeOperation = "source-in";
+                    drawCover(pctx, vid, 0, 0, W, H);
+                    pctx.globalCompositeOperation = "source-over";
+
+                    // Now pc contains ONLY the person on transparent background!
+                    // Draw clones at shifted positions
+                    const cloneOffsets = [
+                        { x: -0.22 },
+                        { x: 0.22 },
+                        { x: -0.40 },
+                        { x: 0.40 },
+                        { x: -0.55 },
+                        { x: 0.55 },
+                    ];
+
+                    for (let i = 0; i < Math.min(count, 6); i++) {
+                        const off = cloneOffsets[i];
+                        ctx.save();
+                        ctx.globalAlpha = 0.92;
+                        // Draw the person-only cutout shifted horizontally
+                        ctx.drawImage(pc, off.x * W, 0);
+                        ctx.restore();
                     }
-                    ctx.restore();
                 }
-            } else {
-                // ==========================================
-                // JUTSU MODE: Main + Clone panels
-                // ==========================================
-                const gap = 4;
+            }
 
-                // Determine layout based on clone count
-                // 2 clones = 3 panels, 4 clones = 5 panels, 6 clones = 7 panels
-                const totalPanels = Math.min(count, 6) + 1; // +1 for main
-                // Limit to max 5 visible panels for clarity (1 main + 4 clones)
-                const visiblePanels = Math.min(totalPanels, 5);
+            // ============================
+            // 3. Hand skeleton (when NOT active)
+            // ============================
+            if (!active && res?.multiHandLandmarks) {
+                let color = "#ff3333";
+                if (status === "near") color = "#ffdd00";
+                if (status === "active") color = "#00ff66";
+                if (status === "fist") color = "#3399ff";
 
-                // Calculate panel sizes
-                // Main panel is larger, clones are smaller
-                const mainWidth = Math.floor(W * 0.42);
-                const remainingWidth = W - mainWidth - gap * (visiblePanels - 1);
-                const cloneWidth = Math.floor(remainingWidth / (visiblePanels - 1));
-                const panelH = H;
-
-                // Draw clones first (behind if overlapping)
-                const clonePanels = visiblePanels - 1;
-                const leftClones = Math.ceil(clonePanels / 2);
-                const rightClones = Math.floor(clonePanels / 2);
-
-                // Left clones
-                for (let i = 0; i < leftClones; i++) {
-                    const x = (leftClones - 1 - i) * (cloneWidth + gap);
-                    ctx.save();
-                    // Slight blue/purple tint for clones
-                    ctx.filter = "saturate(0.8) brightness(0.9) hue-rotate(10deg)";
-                    drawCover(ctx, vid, x, 0, cloneWidth, panelH);
-                    ctx.restore();
-
-                    // Clone border glow
-                    ctx.save();
-                    ctx.strokeStyle = "rgba(0, 180, 255, 0.6)";
-                    ctx.lineWidth = 3;
-                    ctx.shadowColor = "#00b4ff";
-                    ctx.shadowBlur = 15;
-                    ctx.strokeRect(x + 1, 1, cloneWidth - 2, panelH - 2);
-                    ctx.restore();
-                }
-
-                // Right clones
-                for (let i = 0; i < rightClones; i++) {
-                    const x = W - (i + 1) * (cloneWidth + gap) + gap;
-                    ctx.save();
-                    ctx.filter = "saturate(0.8) brightness(0.9) hue-rotate(10deg)";
-                    drawCover(ctx, vid, x, 0, cloneWidth, panelH);
-                    ctx.restore();
-
-                    ctx.save();
-                    ctx.strokeStyle = "rgba(0, 180, 255, 0.6)";
-                    ctx.lineWidth = 3;
-                    ctx.shadowColor = "#00b4ff";
-                    ctx.shadowBlur = 15;
-                    ctx.strokeRect(x + 1, 1, cloneWidth - 2, panelH - 2);
-                    ctx.restore();
-                }
-
-                // Main panel (center, larger, on top)
-                const mainX = leftClones * (cloneWidth + gap);
                 ctx.save();
-                drawCover(ctx, vid, mainX, 0, mainWidth, panelH);
-                ctx.restore();
-
-                // Main panel orange border
-                ctx.save();
-                ctx.strokeStyle = "rgba(255, 120, 0, 0.8)";
-                ctx.lineWidth = 4;
-                ctx.shadowColor = "#ff6600";
-                ctx.shadowBlur = 20;
-                ctx.strokeRect(mainX + 1, 1, mainWidth - 2, panelH - 2);
+                const conns = [
+                    [0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8],
+                    [0, 9], [9, 10], [10, 11], [11, 12], [0, 13], [13, 14], [14, 15], [15, 16],
+                    [0, 17], [17, 18], [18, 19], [19, 20], [5, 9], [9, 13], [13, 17],
+                ];
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.globalAlpha = 0.4;
+                for (const hand of res.multiHandLandmarks) {
+                    for (const [a, b] of conns) {
+                        ctx.beginPath();
+                        ctx.moveTo(hand[a].x * W, hand[a].y * H);
+                        ctx.lineTo(hand[b].x * W, hand[b].y * H);
+                        ctx.stroke();
+                    }
+                }
+                ctx.globalAlpha = 1;
+                ctx.fillStyle = color;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = color;
+                for (const hand of res.multiHandLandmarks) {
+                    for (const pt of hand) {
+                        ctx.beginPath();
+                        ctx.arc(pt.x * W, pt.y * H, 4, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
                 ctx.restore();
             }
 
-            // ==========================================
-            // Flash effect (brief white/gold, fades once)
-            // ==========================================
+            // ============================
+            // 4. Smoke particles
+            // ============================
+            const smokes = smokesRef.current;
+            for (let i = smokes.length - 1; i >= 0; i--) {
+                const s = smokes[i];
+                s.x += s.vx;
+                s.y += s.vy;
+                s.life -= 0.012;
+                s.r += 0.5;
+                if (s.life <= 0) { smokes.splice(i, 1); continue; }
+                const alpha = (s.life / s.maxLife) * 0.5;
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = "#ddd";
+                ctx.shadowColor = "#fff";
+                ctx.shadowBlur = 15;
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // ============================
+            // 5. Flash (fades once)
+            // ============================
             if (flashRef.current > 0.02) {
                 ctx.save();
                 ctx.globalAlpha = flashRef.current;
                 ctx.fillStyle = "#ffffff";
                 ctx.fillRect(0, 0, W, H);
                 ctx.restore();
-                flashRef.current *= 0.85;
+                flashRef.current *= 0.82;
             }
 
             raf = requestAnimationFrame(draw);

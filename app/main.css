@@ -1,0 +1,139 @@
+@import "tailwindcss";
+
+/* ---- Theme tokens ---- */
+:root {
+  --naruto-orange: #ff6600;
+  --naruto-red: #cc3300;
+  --naruto-gold: #ffd700;
+  --naruto-blue: #0066cc;
+}
+
+/* ---- Base ---- */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: #000;
+  color: #fff;
+  overflow: hidden;
+  font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Keyframes ---- */
+@keyframes shake {
+
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+
+  10% {
+    transform: translate(-2px, -1px);
+  }
+
+  30% {
+    transform: translate(2px, 1px);
+  }
+
+  50% {
+    transform: translate(-1px, 2px);
+  }
+
+  70% {
+    transform: translate(1px, -2px);
+  }
+
+  90% {
+    transform: translate(-2px, 1px);
+  }
+}
+
+@keyframes float-y {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes chakra-pulse {
+
+  0%,
+  100% {
+    opacity: 0.5;
+    text-shadow: 0 0 10px #0066cc;
+  }
+
+  50% {
+    opacity: 1;
+    text-shadow: 0 0 30px #ff6600;
+  }
+}
+
+@keyframes glow-border {
+
+  0%,
+  100% {
+    box-shadow: 0 0 20px rgba(255, 102, 0, 0.2);
+  }
+
+  50% {
+    box-shadow: 0 0 50px rgba(255, 102, 0, 0.5);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(40px) scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.shake {
+  animation: shake 0.4s ease-in-out infinite;
+}
+
+.float-y {
+  animation: float-y 3s ease-in-out infinite;
+}
+
+.chakra-loading {
+  animation: chakra-pulse 1.5s ease-in-out infinite;
+}
+
+.glow-border {
+  animation: glow-border 2s ease-in-out infinite;
+}
+
+.fade-in {
+  animation: fade-in 0.5s ease-out both;
+}
+
+.slide-up {
+  animation: slide-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
