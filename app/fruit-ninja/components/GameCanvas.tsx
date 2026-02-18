@@ -53,8 +53,19 @@ const FRUIT_COLORS: Record<string, string> = {
     "🍉": "#ff3333", "🍊": "#ffaa00", "🍎": "#ff0000", "🍋": "#ffff00",
     "🍇": "#cc00ff", "🥝": "#55ff00", "🍌": "#ffee00"
 };
-const GRAVITY = 0.08; // Reduced gravity for slower fall
-const SPAWN_RATE = 120; // Slower spawn rate
+
+interface GameSettings {
+    spawnRate: number;
+    gravity: number;
+    launchPower: number;
+    lives: number;
+}
+
+const DIFFICULTY_PRESETS: Record<string, GameSettings> = {
+    easy: { spawnRate: 150, gravity: 0.06, launchPower: 8, lives: 5 },
+    medium: { spawnRate: 100, gravity: 0.08, launchPower: 10, lives: 3 },
+    hard: { spawnRate: 60, gravity: 0.12, launchPower: 14, lives: 2 },
+};
 
 export default function GameCanvas({ webcamRef, finger }: Props) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -66,6 +77,10 @@ export default function GameCanvas({ webcamRef, finger }: Props) {
     useEffect(() => {
         isMobileRef.current = window.innerWidth < 768;
     }, []);
+
+    // Settings State
+    const [showSettings, setShowSettings] = useState(false);
+    const [settings, setSettings] = useState<GameSettings>(DIFFICULTY_PRESETS.medium);
 
     // Game State Refs
     const stateRef = useRef<GameState>("start");
@@ -190,9 +205,9 @@ export default function GameCanvas({ webcamRef, finger }: Props) {
         stateRef.current = "playing";
         setUiState("playing");
         scoreRef.current = 0;
-        livesRef.current = 90;
+        livesRef.current = settings.lives;
         setScore(0);
-        setLives(90);
+        setLives(settings.lives);
         fruitsRef.current = [];
         particlesRef.current = [];
         floatTextsRef.current = [];
@@ -248,8 +263,8 @@ export default function GameCanvas({ webcamRef, finger }: Props) {
         const isBomb = Math.random() < 0.1;
         const type = FRUIT_TYPES[Math.floor(Math.random() * FRUIT_TYPES.length)];
         const x = Math.random() * (w - 100) + 50;
-        const vx = (w / 2 - x) * 0.005 + (Math.random() - 0.5) * 3; // Reduced horizontal speed
-        const vy = -(Math.random() * 4 + 10); // Reduced launch speed, fruits won't go too high
+        const vx = (w / 2 - x) * 0.005 + (Math.random() - 0.5) * 3;
+        const vy = -(Math.random() * 4 + settings.launchPower);
 
         fruitsRef.current.push({
             id: Math.random(),
@@ -257,7 +272,7 @@ export default function GameCanvas({ webcamRef, finger }: Props) {
             vx, vy,
             type: isBomb ? "💣" : type,
             rotation: 0,
-            vr: (Math.random() - 0.5) * 0.2, // Slower rotation
+            vr: (Math.random() - 0.5) * 0.2,
             scale: 1,
             sliced: false,
             bomb: isBomb
@@ -380,7 +395,7 @@ export default function GameCanvas({ webcamRef, finger }: Props) {
             // ================= GAME LOOP =================
             if (stateRef.current === "playing") {
                 frameRef.current++;
-                if (frameRef.current % SPAWN_RATE === 0) spawnFruit(w, h);
+                if (frameRef.current % settings.spawnRate === 0) spawnFruit(w, h);
 
                 // Update Fruits
                 for (let i = fruitsRef.current.length - 1; i >= 0; i--) {
@@ -388,7 +403,7 @@ export default function GameCanvas({ webcamRef, finger }: Props) {
 
                     f.x += f.vx;
                     f.y += f.vy;
-                    f.vy += GRAVITY;
+                    f.vy += settings.gravity;
                     f.rotation += f.vr;
 
                     // Collision
@@ -621,12 +636,21 @@ export default function GameCanvas({ webcamRef, finger }: Props) {
                         نينجا البلغة
                     </h1>
                     <p className="text-4xl text-white mb-10 font-bold drop-shadow-md" dir="rtl">هز صبعك و وريني حنة يديك! 🤚</p>
-                    <button
-                        onClick={startGame}
-                        className="px-12 py-6 bg-gradient-to-br from-orange-600 to-red-600 rounded-full text-4xl font-black hover:scale-110 transition-all shadow-[0_0_50px_rgba(255,100,0,0.8)] border-4 border-orange-400 text-white active:scale-95"
-                    >
-                        بسم الله نبداو
-                    </button>
+                    
+                    <div className="flex gap-4 mb-8">
+                        <button
+                            onClick={startGame}
+                            className="px-12 py-6 bg-gradient-to-br from-orange-600 to-red-600 rounded-full text-4xl font-black hover:scale-110 transition-all shadow-[0_0_50px_rgba(255,100,0,0.8)] border-4 border-orange-400 text-white active:scale-95"
+                        >
+                            بسم الله نبداو
+                        </button>
+                        <button
+                            onClick={() => setShowSettings(true)}
+                            className="px-8 py-6 bg-gradient-to-br from-purple-600 to-blue-600 rounded-full text-3xl font-bold hover:scale-110 transition-all shadow-[0_0_30px_rgba(150,100,255,0.6)] border-4 border-purple-400 text-white active:scale-95"
+                        >
+                            ⚙️ الإعدادات
+                        </button>
+                    </div>
 
                     <div className="absolute bottom-10 flex gap-12 text-white/70 text-lg font-semibold">
                         <div className="flex flex-col items-center gap-2">
@@ -638,6 +662,144 @@ export default function GameCanvas({ webcamRef, finger }: Props) {
                             <span>حضِي مع الطبسيل</span>
                         </div>
                     </div>
+
+                    {/* Settings Panel */}
+                    {showSettings && (
+                        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/80 backdrop-blur-md" onClick={() => setShowSettings(false)}>
+                            <div className="bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 rounded-3xl p-8 max-w-2xl w-full mx-4 border-2 border-purple-500/50 shadow-[0_0_60px_rgba(150,100,255,0.4)]" onClick={e => e.stopPropagation()}>
+                                <div className="flex justify-between items-center mb-6">
+                                    <h2 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">
+                                        ⚙️ إعدادات اللعبة
+                                    </h2>
+                                    <button
+                                        onClick={() => setShowSettings(false)}
+                                        className="text-3xl text-white/70 hover:text-white transition-colors"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+
+                                {/* Difficulty Presets */}
+                                <div className="mb-8">
+                                    <h3 className="text-2xl font-bold text-white mb-4">📊 الصعوبة</h3>
+                                    <div className="grid grid-cols-3 gap-3">
+                                        {Object.entries(DIFFICULTY_PRESETS).map(([key, preset]) => (
+                                            <button
+                                                key={key}
+                                                onClick={() => setSettings(preset)}
+                                                className={`py-4 px-6 rounded-2xl text-xl font-bold transition-all ${
+                                                    settings.spawnRate === preset.spawnRate && settings.gravity === preset.gravity
+                                                        ? 'bg-gradient-to-br from-purple-500 to-pink-500 text-white scale-105 shadow-lg'
+                                                        : 'bg-white/10 text-white/70 hover:bg-white/20'
+                                                }`}
+                                            >
+                                                {key === 'easy' && '🟢 سهل'}
+                                                {key === 'medium' && '🟡 متوسط'}
+                                                {key === 'hard' && '🔴 صعب'}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Custom Sliders */}
+                                <div className="space-y-6">
+                                    <div>
+                                        <div className="flex justify-between text-white mb-2">
+                                            <span className="text-lg font-semibold">🎯 سرعة الظهور</span>
+                                            <span className="text-purple-400 font-mono">{settings.spawnRate}</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="40"
+                                            max="200"
+                                            value={settings.spawnRate}
+                                            onChange={e => setSettings({ ...settings, spawnRate: Number(e.target.value) })}
+                                            className="w-full h-3 bg-white/20 rounded-full appearance-none cursor-pointer accent-purple-500"
+                                        />
+                                        <div className="flex justify-between text-xs text-white/50 mt-1">
+                                            <span>سريع</span>
+                                            <span>بطيء</span>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <div className="flex justify-between text-white mb-2">
+                                            <span className="text-lg font-semibold">🌍 الجاذبية</span>
+                                            <span className="text-purple-400 font-mono">{settings.gravity.toFixed(2)}</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="0.04"
+                                            max="0.20"
+                                            step="0.01"
+                                            value={settings.gravity}
+                                            onChange={e => setSettings({ ...settings, gravity: Number(e.target.value) })}
+                                            className="w-full h-3 bg-white/20 rounded-full appearance-none cursor-pointer accent-purple-500"
+                                        />
+                                        <div className="flex justify-between text-xs text-white/50 mt-1">
+                                            <span>خفيفة</span>
+                                            <span>قوية</span>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <div className="flex justify-between text-white mb-2">
+                                            <span className="text-lg font-semibold">🚀 قوة القفز</span>
+                                            <span className="text-purple-400 font-mono">{settings.launchPower}</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="6"
+                                            max="18"
+                                            value={settings.launchPower}
+                                            onChange={e => setSettings({ ...settings, launchPower: Number(e.target.value) })}
+                                            className="w-full h-3 bg-white/20 rounded-full appearance-none cursor-pointer accent-purple-500"
+                                        />
+                                        <div className="flex justify-between text-xs text-white/50 mt-1">
+                                            <span>منخفض</span>
+                                            <span>عالي</span>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <div className="flex justify-between text-white mb-2">
+                                            <span className="text-lg font-semibold">❤️ عدد القلوب</span>
+                                            <span className="text-purple-400 font-mono">{settings.lives}</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="1"
+                                            max="10"
+                                            value={settings.lives}
+                                            onChange={e => setSettings({ ...settings, lives: Number(e.target.value) })}
+                                            className="w-full h-3 bg-white/20 rounded-full appearance-none cursor-pointer accent-purple-500"
+                                        />
+                                        <div className="flex justify-between text-xs text-white/50 mt-1">
+                                            <span>1</span>
+                                            <span>10</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Current Settings Preview */}
+                                <div className="mt-8 p-4 bg-white/10 rounded-xl">
+                                    <div className="text-white/70 text-sm mb-2">📋 الإعدادات الحالية:</div>
+                                    <div className="text-white font-mono text-sm">
+                                        ظهور: {settings.spawnRate} | جاذبية: {settings.gravity.toFixed(2)} | قفز: {settings.launchPower} | قلوب: {settings.lives}
+                                    </div>
+                                </div>
+
+                                <div className="mt-6 flex justify-center">
+                                    <button
+                                        onClick={() => setShowSettings(false)}
+                                        className="px-10 py-4 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full text-2xl font-bold hover:scale-105 transition-all shadow-lg text-white"
+                                    >
+                                        ✓ حفظ وإغلاق
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
