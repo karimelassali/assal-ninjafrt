@@ -61,6 +61,12 @@ export default function GameCanvas({ webcamRef, finger }: Props) {
     const requestRef = useRef<number>(0);
     const audioCtxRef = useRef<AudioContext | null>(null);
 
+    // Performance Optimization
+    const isMobileRef = useRef(false);
+    useEffect(() => {
+        isMobileRef.current = window.innerWidth < 768;
+    }, []);
+
     // Game State Refs
     const stateRef = useRef<GameState>("start");
     const scoreRef = useRef(0);
@@ -82,6 +88,12 @@ export default function GameCanvas({ webcamRef, finger }: Props) {
     const gameOverSoundRef = useRef<AudioBuffer | null>(null); // Custom gameover sound
     const fingerRef = useRef(finger);
     const activeAudioSourceRef = useRef<AudioBufferSourceNode | null>(null); // Track active sound
+
+    // FPS Tracking
+    const fpsRef = useRef(0);
+    const lastTimeRef = useRef(performance.now());
+    const frameCountRef = useRef(0);
+
     useEffect(() => {
         fingerRef.current = finger;
     }, [finger]);
@@ -253,8 +265,9 @@ export default function GameCanvas({ webcamRef, finger }: Props) {
     };
 
     const spawnParticles = (x: number, y: number, color: string) => {
-        // More particles, bigger size
-        for (let i = 0; i < 20; i++) {
+        // Less particles on mobile for performance
+        const count = isMobileRef.current ? 8 : 20;
+        for (let i = 0; i < count; i++) {
             const angle = Math.random() * Math.PI * 2;
             const speed = Math.random() * 8 + 2;
             particlesRef.current.push({
@@ -263,7 +276,7 @@ export default function GameCanvas({ webcamRef, finger }: Props) {
                 vy: Math.sin(angle) * speed,
                 life: 1.0,
                 color,
-                size: Math.random() * 15 + 8 // Bigger particles!
+                size: Math.random() * 15 + 8
             });
         }
     };
@@ -397,8 +410,11 @@ export default function GameCanvas({ webcamRef, finger }: Props) {
                 ctx.lineCap = "round";
                 ctx.stroke();
 
-                ctx.shadowBlur = 25;
-                ctx.shadowColor = "#00ffff";
+                // Disable glow on mobile
+                if (!isMobileRef.current) {
+                    ctx.shadowBlur = 25;
+                    ctx.shadowColor = "#00ffff";
+                }
                 ctx.stroke();
                 ctx.shadowBlur = 0;
             }
@@ -493,8 +509,11 @@ export default function GameCanvas({ webcamRef, finger }: Props) {
                         ctx.fillText(f.type, 0, 0);
                         ctx.restore();
                     } else {
-                        ctx.shadowBlur = 20;
-                        ctx.shadowColor = f.bomb ? "#ff0000" : "#ffff00";
+                        // Disable expensive shadow on mobile
+                        if (!isMobileRef.current) {
+                            ctx.shadowBlur = 20;
+                            ctx.shadowColor = f.bomb ? "#ff0000" : "#ffff00";
+                        }
 
                         if (f.bomb && bombImgRef.current?.complete) {
                             const bImg = bombImgRef.current;
@@ -576,6 +595,25 @@ export default function GameCanvas({ webcamRef, finger }: Props) {
             }
 
             ctx.restore();
+
+            // FPS Calculation & Display
+            const now = performance.now();
+            frameCountRef.current++;
+            if (now - lastTimeRef.current >= 1000) {
+                fpsRef.current = frameCountRef.current;
+                frameCountRef.current = 0;
+                lastTimeRef.current = now;
+            }
+
+            ctx.save();
+            ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+            ctx.fillRect(w - 100, h - 40, 90, 30);
+            ctx.fillStyle = "#00ff00";
+            ctx.font = "bold 20px monospace";
+            ctx.textAlign = "right";
+            ctx.fillText(`FPS: ${fpsRef.current}`, w - 20, h - 18);
+            ctx.restore();
+
             requestRef.current = requestAnimationFrame(update);
         };
 
